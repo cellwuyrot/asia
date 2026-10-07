@@ -1,0 +1,8 @@
+{
+    "id": "website",
+    "name": "ASIA BASA",
+    "description": "ASIA BASA — каталог азиатских продуктов и подарочных наборов",
+    "url": "http://localhost:4200",
+    "hostname": "localhost",
+    "port": 8080
+}

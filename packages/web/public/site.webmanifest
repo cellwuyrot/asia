@@ -1,0 +1,12 @@
+{
+  "name": "ASIA BASA",
+  "short_name": "ASIA BASA",
+  "description": "Азиатские продукты и подарочные наборы из Китая, Японии и Южной Кореи.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f4ee",
+  "theme_color": "#263c31",
+  "icons": [
+    {"src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml"}
+  ]
+}
