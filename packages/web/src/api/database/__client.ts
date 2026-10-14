@@ -9,4 +9,6 @@ const client = createClient({
   authToken: process.env.DATABASE_AUTH_TOKEN,
 });
 
+if (process.env.DATABASE_URL?.startsWith("file:")) await client.execute("PRAGMA journal_mode=WAL");
+
 export const db = drizzle(client, { schema });

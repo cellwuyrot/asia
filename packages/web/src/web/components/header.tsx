@@ -1,7 +1,8 @@
 import { Menu, Search, ShoppingBag, X, ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import { Link } from "wouter";
-import { SECTIONS, type SectionId, rub } from "../../shared/shop";
+import { SECTIONS, rub } from "../../shared/catalog-display";
+import type { SectionId } from "../../shared/shop";
 import { useShop } from "../queries/shop";
 import { useCart } from "./cart-context";
 const nav: SectionId[] = ["bundles", "china", "japan", "korea"];

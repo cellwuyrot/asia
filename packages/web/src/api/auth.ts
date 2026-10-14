@@ -10,7 +10,7 @@ export const auth = betterAuth({
   emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 12 },
   trustedOrigins: [
     (process.env.WEBSITE_URL || "http://localhost:4200").replace(/\/$/, ""),
-    "http://localhost:4200",
+    ...(process.env.NODE_ENV === "production" ? [] : ["http://localhost:4200"]),
     ...(process.env.AUTH_TRUSTED_ORIGINS || "")
       .split(",")
       .map((origin) => origin.trim().replace(/\/$/, "")),

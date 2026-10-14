@@ -7,6 +7,9 @@ import { admin } from "../middleware/admin";
 import { db } from "../database";
 import * as s from "../database/schema";
 import { productSchema, settingsSchema, type Product } from "../../shared/shop";
+import { invalidatePageCache } from "../services/page-seo";
+import { captchaRequired } from "../services/order-security";
+import { ordersAvailable } from "../services/orders";
 async function list() {
   return (await db.select().from(s.products))
     .map((x) => productSchema.parse(JSON.parse(x.data)))
@@ -24,6 +27,8 @@ export const shop = {
   catalog: base.handler(async () => ({
     products: (await list()).filter((p) => p.active).map(publicProduct),
     settings: await settings(),
+    ordersEnabled: await ordersAvailable(),
+    captchaSiteKey: captchaRequired() ? process.env.TURNSTILE_SITE_KEY || "" : "",
   })),
 };
 export const management = {
@@ -59,6 +64,7 @@ export const management = {
       .insert(s.products)
       .values({ id: input.id, data: JSON.stringify(input) })
       .onConflictDoUpdate({ target: s.products.id, set: { data: JSON.stringify(input) } });
+    invalidatePageCache();
     return input;
   }),
   deleteProduct: admin.input(z.object({ id: z.string() })).handler(async ({ input }) => {
@@ -68,6 +74,7 @@ export const management = {
         message: "Товар входит в набор. Уберите его из состава или скройте товар.",
       });
     await db.delete(s.products).where(eq(s.products.id, input.id));
+    invalidatePageCache();
     return { ok: true };
   }),
   saveSettings: admin.input(settingsSchema).handler(async ({ input }) => {
@@ -78,6 +85,7 @@ export const management = {
       .insert(s.settings)
       .values({ id: "main", data: JSON.stringify(input) })
       .onConflictDoUpdate({ target: s.settings.id, set: { data: JSON.stringify(input) } });
+    invalidatePageCache();
     return input;
   }),
   upload: admin.input(z.object({ data: z.string().max(3000000) })).handler(async ({ input }) => {

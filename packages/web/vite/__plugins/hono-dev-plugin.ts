@@ -10,7 +10,7 @@ export default function honoDevPlugin(): Plugin {
         try {
           const request = await toWebRequest(req);
           const app = await loadApp(server);
-          const response = await app.fetch(request);
+          const response = await app.fetch(request, { clientIp: req.socket.remoteAddress?.replace(/^::ffff:/, "") || "unknown" });
 
           res.statusCode = response.status;
           response.headers.forEach((value: string, key: string) => {
@@ -43,11 +43,10 @@ function toWebRequest(req: import("http").IncomingMessage): Request {
   }
 
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
-  return new Request(url, {
+  return new Request(url.toString(), {
     method: req.method,
     headers,
     body: hasBody ? (req as unknown as ReadableStream) : undefined,
-    // @ts-expect-error duplex needed for streaming request bodies
     duplex: hasBody ? "half" : undefined,
   });
 }

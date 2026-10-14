@@ -35,6 +35,7 @@ import {
 } from "../../shared/shop";
 import { Modal } from "../components/modal";
 import { Packshot } from "../components/product-card";
+import { AdminOrders } from "../components/admin-orders";
 function errorText(error: unknown) {
   return error instanceof Error ? error.message : "Не удалось выполнить действие";
 }
@@ -130,7 +131,7 @@ function Login({ onDone }: { onDone: () => void }) {
 }
 function Dashboard({ email, onLogout }: { email: string; onLogout: () => void }) {
   const q = useManagement();
-  const [tab, setTab] = useState<"products" | "bundles" | "settings">("products");
+  const [tab, setTab] = useState<"products" | "bundles" | "settings" | "orders">("products");
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState("");
   const [edit, setEdit] = useState<Product | null>(null);
@@ -168,6 +169,7 @@ function Dashboard({ email, onLogout }: { email: string; onLogout: () => void })
             ["products", "Товары", LayoutGrid],
             ["bundles", "Наборы", Package],
             ["settings", "Настройки", SettingsIcon],
+            ["orders", "Заявки / Telegram", Package],
           ] as const
         ).map(([id, title, Icon]) => (
           <button
@@ -199,7 +201,7 @@ function Dashboard({ email, onLogout }: { email: string; onLogout: () => void })
           <div>
             <p className="eyebrow mb-1">ADMINISTRATION</p>
             <h1 className="serif text-4xl">
-              {tab === "settings"
+              {tab === "orders" ? "Заявки и Telegram" : tab === "settings"
                 ? "Настройки магазина"
                 : tab === "bundles"
                   ? "Авторские наборы"
@@ -209,7 +211,7 @@ function Dashboard({ email, onLogout }: { email: string; onLogout: () => void })
               Изменения сохраняются на сервере и появляются на витрине.
             </p>
           </div>
-          {tab !== "settings" && (
+          {(tab === "products" || tab === "bundles") && (
             <button className="btn" onClick={newProduct}>
               <Plus size={16} />
               Добавить {tab === "bundles" ? "набор" : "товар"}
@@ -223,6 +225,8 @@ function Dashboard({ email, onLogout }: { email: string; onLogout: () => void })
             Не удалось загрузить данные: {errorText(q.error)}{" "}
             <button onClick={() => q.refetch()}>Повторить</button>
           </p>
+        ) : tab === "orders" ? (
+          <AdminOrders />
         ) : tab === "settings" ? (
           <SettingsEditor initial={q.data!.settings} />
         ) : (
@@ -458,6 +462,11 @@ function ProductEditor({
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           {text("name", "Название")}
+          <label className="field-label">Наличие<select className="field" value={draft.availability} onChange={e => set("availability", e.target.value as Product["availability"])}><option value="unknown">Уточняется</option><option value="in_stock">В наличии</option><option value="out_of_stock">Нет в наличии</option></select></label>
+          {text("ingredients", "Состав")}
+          {text("allergens", "Аллергены")}
+          {text("storage", "Условия хранения")}
+          {text("shelfLife", "Срок годности")}
           {text("id", "ID (не меняется после создания)")}
           <label>
             <span className="field-label">Раздел</span>
