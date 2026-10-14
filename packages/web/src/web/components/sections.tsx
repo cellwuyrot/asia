@@ -1,6 +1,7 @@
 import { ArrowRight, Flame } from "lucide-react";
 import { useMemo, useState } from "react";
-import { SECTIONS, type SectionId } from "../../shared/shop";
+import { SECTIONS } from "../../shared/catalog-display";
+import type { SectionId } from "../../shared/shop";
 import { useShop } from "../queries/shop";
 import { ProductCard } from "./product-card";
 export function CollectionSection({ id }: { id: SectionId }) {

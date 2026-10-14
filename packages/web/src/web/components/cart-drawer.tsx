@@ -1,16 +1,19 @@
 import { Check, Minus, Plus, ShoppingBag, Trash2, X, Truck } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useShop } from "../queries/shop";
-import { rub } from "../../shared/shop";
+import { rub } from "../../shared/catalog-display";
 import { useCart } from "./cart-context";
 import { Packshot } from "./product-card";
+import { OrderCheckout } from "./order-checkout";
 export function CartDrawer() {
   const ref = useRef<HTMLDialogElement>(null);
   const c = useCart();
+  const [submitting, setSubmitting] = useState(false);
+  const [receipt, setReceipt] = useState("");
   const q = useShop();
-  const threshold = q.data?.settings.freeShipping || 0;
+  const threshold = Math.round((q.data?.settings.freeShipping || 0) * 100) / 100;
   const left = Math.max(0, threshold - c.total);
-  const fee = c.total && left > 0 ? q.data?.settings.deliveryFee || 0 : 0;
+  const fee = c.total && left > 0 ? Math.round((q.data?.settings.deliveryFee || 0) * 100) / 100 : 0;
   useEffect(() => {
     if (c.open && !ref.current?.open) ref.current?.showModal();
     else if (!c.open && ref.current?.open) ref.current?.close();
@@ -26,11 +29,12 @@ export function CartDrawer() {
   }, [c.open]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") c.setOpen(false);
+      if (e.key === "Escape" && !submitting) c.setOpen(false);
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [c]);
+  }, [c, submitting]);
+  useEffect(() => { if (c.lines.length) setReceipt(""); }, [c.lines.length]);
   return (
     <>
       <dialog
@@ -39,14 +43,14 @@ export function CartDrawer() {
         aria-label="Корзина"
         onCancel={(e) => {
           e.preventDefault();
-          c.setOpen(false);
+          if (!submitting) c.setOpen(false);
         }}
       >
         <div className="flex items-center justify-between border-b border-[#e5e6dc] p-6">
           <h3 className="serif text-3xl">
             Ваша коллекция <span className="font-sans text-sm text-muted">({c.count})</span>
           </h3>
-          <button onClick={() => c.setOpen(false)} aria-label="Закрыть корзину">
+          <button disabled={submitting} onClick={() => c.setOpen(false)} aria-label="Закрыть корзину">
             <X size={20} />
           </button>
         </div>
@@ -62,8 +66,10 @@ export function CartDrawer() {
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-6">
-          {!c.lines.length ? (
+        <div className="flex-1 min-h-24 overflow-y-auto p-6">
+          {receipt ? (
+            <div role="status" className="py-8"><h3 className="serif text-3xl">Заявка сохранена</h3><p className="mt-4 text-sm break-all">Номер: {receipt}</p><p className="mt-3 text-sm">Оплата не списывалась. Продавец свяжется с вами для подтверждения.</p><button className="btn mt-5" onClick={() => { setReceipt(""); c.setOpen(false); }}>Готово</button></div>
+          ) : !c.lines.length ? (
             <div className="py-20 text-center">
               <ShoppingBag className="mx-auto text-gold" size={32} />
               <p className="serif mt-4 text-3xl">Начните путешествие</p>
@@ -82,6 +88,7 @@ export function CartDrawer() {
                   <div className="flex justify-between gap-3">
                     <span className="text-sm font-semibold">{p.name}</span>
                     <button
+                      disabled={submitting}
                       aria-label="Удалить товар"
                       onClick={() => c.remove(p.id)}
                       className="text-muted"
@@ -93,6 +100,7 @@ export function CartDrawer() {
                   <div className="mt-3 flex items-center justify-between">
                     <div className="flex items-center border border-[#ddd]">
                       <button
+                        disabled={submitting}
                         aria-label="Уменьшить количество"
                         className="p-2"
                         onClick={() => c.dec(p.id)}
@@ -101,6 +109,7 @@ export function CartDrawer() {
                       </button>
                       <span className="px-2 text-sm">{qty}</span>
                       <button
+                        disabled={submitting}
                         aria-label="Увеличить количество"
                         className="p-2"
                         onClick={() => c.add(p.id)}
@@ -116,7 +125,7 @@ export function CartDrawer() {
           )}
         </div>
         {c.lines.length > 0 && (
-          <div className="border-t border-[#e5e6dc] bg-[#f9faf6] p-6">
+          <div className="max-h-[65dvh] shrink-0 overflow-y-auto border-t border-[#e5e6dc] bg-[#f9faf6] p-6">
             <div className="flex justify-between text-sm text-muted">
               <span>Доставка</span>
               <span>{fee ? rub(fee) : "Бесплатно"}</span>
@@ -125,8 +134,11 @@ export function CartDrawer() {
               <span>Итого</span>
               <span>{rub(c.total + fee)}</span>
             </div>
+            {q.data?.ordersEnabled ? (
+              <OrderCheckout totalKopecks={c.lines.reduce((sum, l) => sum + Math.round(l.product.price * 100) * l.qty, 0) + Math.round(fee * 100)} onAccepted={setReceipt} onBusy={setSubmitting} />
+            ) : (<>
             <p className="mb-4 text-sm leading-6 text-muted">
-              Приём заказов и онлайн-оплата пока не подключены. Корзина сохраняется — свяжитесь с
+              Приём заявок через сайт пока отключён. Онлайн-оплата не подключена. Корзина сохраняется — свяжитесь с
               магазином для уточнения наличия и заказа.
             </p>
             {q.data?.settings.phone ? (
@@ -150,6 +162,7 @@ export function CartDrawer() {
                 Контакты магазина скоро
               </button>
             )}
+            </>)}
           </div>
         )}
       </dialog>

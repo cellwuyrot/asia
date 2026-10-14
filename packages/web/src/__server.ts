@@ -1,88 +1,37 @@
 import app from "./api";
-
-const port = Number(process.env.PORT ?? 3000);
-const distDir = `${import.meta.dirname}/../dist`;
-const indexPath = `${distDir}/index.html`;
-const collectionPaths = ["bundles", "china", "japan", "korea"];
-const infoPaths = ["delivery", "payment", "returns", "privacy", "offer"];
-
-const server = Bun.serve({
-  port,
-  async fetch(request) {
-    const url = new URL(request.url);
-
-    if (url.pathname.startsWith("/api")) return app.fetch(request);
-    if (url.pathname === "/robots.txt") return textResponse(buildRobots(url.origin), "text/plain; charset=utf-8");
-    if (url.pathname === "/sitemap.xml") return textResponse(buildSitemap(url.origin), "application/xml; charset=utf-8");
-
-    const filePath = getStaticFilePath(url.pathname);
-    const file = Bun.file(filePath);
-    if (await file.exists()) return new Response(file);
-
-    const index = Bun.file(indexPath);
-    if (await index.exists()) {
-      const html = await index.text();
-      const absoluteUrl = `${url.origin}${url.pathname === "/" ? "/" : url.pathname}`;
-      const patched = html
-        .replace('<link rel="icon"', `<link rel="canonical" href="${escapeAttr(absoluteUrl)}" />\n\t\t<link rel="icon"`)
-        .replace('<meta property="og:image" content="/og-image.png" />', `<meta property="og:image" content="${escapeAttr(`${url.origin}/og-image.png`)}" />`)
-        .replace('<meta name="twitter:card" content="summary_large_image" />', `<meta property="og:url" content="${escapeAttr(absoluteUrl)}" />\n\t\t<meta name="twitter:card" content="summary_large_image" />`);
-      return new Response(patched, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+import { resolve } from "node:path";
+import { resolveClientIp } from "./api/services/order-security";
+import { pageCatalog, renderPageHtml, escapeHtml } from "./api/services/page-seo";
+const port = Number(process.env.PORT ?? 4200), dist = resolve(import.meta.dirname, "../dist");
+const collectionPaths = ["bundles", "china", "japan", "korea"], infoPaths = ["delivery", "payment", "returns", "privacy", "offer"];
+const headers = { "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "strict-origin-when-cross-origin" };
+Bun.serve({ port, hostname: process.env.HOST || "127.0.0.1", maxRequestBodySize: 3200000, idleTimeout: 20, async fetch(request, server) {
+  const url = new URL(request.url);
+  const origin = (process.env.WEBSITE_URL || url.origin).replace(/\/$/, "");
+  try {
+    if (url.pathname.startsWith("/api")) return app.fetch(request, { clientIp: resolveClientIp(request.headers, server.requestIP(request)?.address) });
+    if (!["GET", "HEAD"].includes(request.method)) return new Response("Method not allowed", { status: 405, headers });
+    const common = { ...headers, ...(process.env.NODE_ENV === "production" && origin.startsWith("https://") ? { "Strict-Transport-Security": "max-age=31536000" } : {}) };
+    if (url.pathname === "/robots.txt") return new Response(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\nSitemap: ${origin}/sitemap.xml\n`, { headers: { ...common, "Content-Type": "text/plain; charset=utf-8" } });
+    if (url.pathname === "/sitemap.xml") {
+      const data = await pageCatalog();
+      const paths = ["/", ...collectionPaths.map(p => "/collections/" + p), ...infoPaths.map(p => "/info/" + p), ...data.products.map(p => "/products/" + encodeURIComponent(p.id))];
+      return new Response(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${paths.map(p => `<url><loc>${escapeHtml(origin + p)}</loc></url>`).join("")}</urlset>`, { headers: { ...common, "Content-Type": "application/xml; charset=utf-8" } });
     }
-
-    if (!isAppRoute(url.pathname)) {
-      return new Response("Not found", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    let pathname: string; try { pathname = decodeURIComponent(url.pathname); } catch { return new Response("Bad path", { status: 400, headers: common }); }
+    if (pathname === "/index.html") return Response.redirect(origin + "/", 308);
+    const filePath = resolve(dist, "." + pathname);
+    if (!filePath.startsWith(dist + "/") && filePath !== dist) return new Response("Forbidden", { status: 403, headers: common });
+    if (pathname.split("/").some(part => part.startsWith("."))) return new Response("Not found", { status: 404, headers: common });
+    if (/\.[A-Za-z0-9]+$/.test(pathname)) {
+      const file = Bun.file(filePath);
+      if (await file.exists()) return new Response(request.method === "HEAD" ? null : file, { headers: { ...common, "Content-Type": file.type, "Cache-Control": pathname.startsWith("/assets/") ? "public,max-age=31536000,immutable" : "public,max-age=3600" } });
+      return new Response("Not found", { status: 404, headers: common });
     }
-
-    return new Response("Build output not found. Run `bun run build` first.", {
-      status: 500,
-      headers: { "Content-Type": "text/plain; charset=utf-8" },
-    });
-  },
-});
-
-console.log(`Web server listening on http://localhost:${server.port}`);
-
-function getStaticFilePath(pathname: string) {
-  const cleanPath = decodeURIComponent(pathname).replace(/^\/+/, "").replaceAll("..", "");
-  return cleanPath ? `${distDir}/${cleanPath}` : indexPath;
-}
-
-function textResponse(body: string, contentType: string) {
-  return new Response(body, { headers: { "Content-Type": contentType } });
-}
-
-function isAppRoute(pathname: string) {
-  return pathname === "/" || pathname === "/admin" || /^\/collections\/(bundles|china|japan|korea)\/?$/.test(pathname) || /^\/info\/(delivery|payment|returns|privacy|offer)\/?$/.test(pathname);
-}
-
-function buildRobots(origin: string) {
-  return [
-    "User-agent: *",
-    "Allow: /",
-    "Disallow: /admin",
-    "Disallow: /api/",
-    `Sitemap: ${origin}/sitemap.xml`,
-    "",
-  ].join("\n");
-}
-
-function buildSitemap(origin: string) {
-  const paths = [
-    "/",
-    ...collectionPaths.map((slug) => `/collections/${slug}`),
-    ...infoPaths.map((slug) => `/info/${slug}`),
-  ];
-  const urls = paths
-    .map((path) => `  <url><loc>${escapeXml(`${origin}${path}`)}</loc></url>`)
-    .join("\n");
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
-}
-
-function escapeXml(value: string) {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
-}
-
-function escapeAttr(value: string) {
-  return escapeXml(value);
-}
+    const index = Bun.file(resolve(dist, "index.html"));
+    if (!await index.exists()) return new Response("Build not found", { status: 503, headers: common });
+    const page = await renderPageHtml(await index.text(), pathname, origin);
+    return new Response(request.method === "HEAD" ? null : page.html, { status: page.status, headers: { ...common, "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache", ...(page.noindex ? { "X-Robots-Tag": "noindex,nofollow" } : {}) } });
+  } catch { return new Response("Service temporarily unavailable", { status: 503, headers: { ...headers, "Retry-After": "30" } }); }
+}});
+console.log(`Web server listening on port ${port}`);

@@ -1,6 +1,8 @@
+import { Link } from "wouter";
 import { ArrowUpRight, Check, Flame, Plus, X } from "lucide-react";
 import { useState, type CSSProperties } from "react";
-import { SECTIONS, rub, type Product } from "../../shared/shop";
+import { SECTIONS, rub } from "../../shared/catalog-display";
+import type { Product } from "../../shared/shop";
 import { useCart } from "./cart-context";
 import { Modal } from "./modal";
 import { useShop } from "../queries/shop";
@@ -100,6 +102,7 @@ export function ProductCard({ p }: { p: Product }) {
             <button
               onClick={add}
               className="flex h-9 w-9 items-center justify-center border border-[#dbdfd5] bg-white text-[#263c31] transition hover:border-[#263c31] hover:bg-[#263c31] hover:text-white"
+              disabled={p.availability === "out_of_stock"}
               aria-label={`В корзину: ${p.name}`}
             >
               {added ? <Check size={15} /> : <Plus size={15} />}
@@ -154,7 +157,9 @@ function ProductDetails({ p, onClose }: { p: Product; onClose: () => void }) {
           {p.extras && <p className="mt-3 text-sm text-muted">Докупить: {p.extras}</p>}
           <div className="mt-6 flex items-center justify-between">
             <b>{rub(p.price)}</b>
+            <Link className="underline text-sm" href={`/products/${p.id}`} onClick={onClose}>Открыть страницу товара</Link>
             <button
+              disabled={p.availability === "out_of_stock"}
               className="btn"
               onClick={() => {
                 cart.add(p.id);

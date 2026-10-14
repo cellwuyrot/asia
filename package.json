@@ -22,15 +22,21 @@
     "db:push": "turbo db:push",
     "internal:kill-port": "node tools/kill-port.cjs",
     "db:seed": "cd packages/web && bun --env-file=../../.env tools/seed.ts",
-    "dev:web": "node tools/dev-workspace.cjs web"
+    "dev:web": "node tools/dev-workspace.cjs web",
+    "db:orders": "cd packages/web && bun --env-file=../../.env tools/setup-orders.ts",
+    "telegram:chat-id": "cd packages/web && bun --env-file=../../.env tools/telegram-chat-id.ts",
+    "db:backup": "cd packages/web && bun --env-file=../../.env tools/backup-local.ts",
+    "test:orders": "cd packages/web && bun --env-file=../../.env.orders-test.local tools/test-orders.ts"
   },
   "devDependencies": {
     "@runablehq/runkit": "0.1.1",
     "@tursodatabase/api": "^1.9.2",
     "@types/bun": "1.3.14",
-    "oxfmt": "0.54.0",
+    "jose": "^6.2.12",
+    "oxfmt": "^0.73.0",
     "turbo": "2.9.18",
-    "typescript": "7.0.1-rc"
+    "typescript": "7.0.1-rc",
+    "vite": "7.3.7"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1023.0",

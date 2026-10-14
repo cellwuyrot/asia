@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { ingressAllowed } from "../services/order-security";
 import { cors } from "hono/cors";
 import { os, type Router } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/fetch";
@@ -20,6 +22,7 @@ import { RPCHandler } from "@orpc/server/fetch";
 export interface RpcContext {
   /** Raw request headers — read cookies/authorization for auth. */
   headers: Headers;
+  clientIp: string;
 }
 
 /** Base procedure builder — chain .input()/.use()/.handler() off this. */
@@ -27,9 +30,23 @@ export const base = os.$context<RpcContext>();
 
 /** Assembles the HTTP mount: CORS → /api/health → oRPC procedures at /api/rpc/*. */
 export function createApp(router: Router<Record<never, never>, RpcContext>) {
-  const app = new Hono().use(
+  const app = new Hono<{ Bindings: { clientIp?: string } }>();
+  app.use("*", async (c, next) => {
+    const ip = c.env?.clientIp || "unknown";
+    const order = c.req.path.includes("createOrder") || c.req.path === "/api/order-session";
+    if (!ingressAllowed(ip, order ? "order" : "api", order ? 60 : 300)) return c.json({ message: "Rate limit exceeded" }, 429, { "Retry-After": "60" });
+    c.header("X-Content-Type-Options", "nosniff"); c.header("X-Frame-Options", "DENY"); c.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    await next();
+  });
+  app.use("/api/rpc/shop/createOrder", bodyLimit({ maxSize: 20000, onError: c => c.json({ message: "Order payload too large" }, 413) }));
+  app.use("*", bodyLimit({ maxSize: 3200000, onError: c => c.json({ message: "Payload too large" }, 413) }));
+  app.use(
     cors({
-      origin: (origin) => origin ?? "*",
+      origin: (origin) => {
+        const allowed = [process.env.WEBSITE_URL, ...(process.env.AUTH_TRUSTED_ORIGINS || "").split(",")]
+          .filter(Boolean).map(value => value!.trim().replace(/\/$/, ""));
+        return allowed.includes(origin) ? origin : undefined;
+      },
       credentials: true,
       // Required so the browser can read the bearer token header set by Better Auth.
       exposeHeaders: ["set-auth-token"],
@@ -42,7 +59,7 @@ export function createApp(router: Router<Record<never, never>, RpcContext>) {
   app.use("/api/rpc/*", async (c, next) => {
     const { matched, response } = await handler.handle(c.req.raw, {
       prefix: "/api/rpc",
-      context: { headers: c.req.raw.headers },
+      context: { headers: c.req.raw.headers, clientIp: c.env?.clientIp || "unknown" },
     });
     if (matched) return c.newResponse(response.body, response);
     await next();

@@ -97,10 +97,8 @@ export function Seo({
                 "@type": "Offer",
                 priceCurrency: "RUB",
                 price: product.price,
-                availability: product.active
-                  ? "https://schema.org/InStock"
-                  : "https://schema.org/OutOfStock",
-                url,
+                ...(product.availability === "in_stock" ? { availability: "https://schema.org/InStock" } : product.availability === "out_of_stock" ? { availability: "https://schema.org/OutOfStock" } : {}),
+                url: `${window.location.origin}/products/${encodeURIComponent(product.id)}`,
               },
             },
           })),
@@ -108,7 +106,7 @@ export function Seo({
       : null;
     script.textContent = JSON.stringify({
       "@context": "https://schema.org",
-      "@graph": itemList ? [website, itemList] : [website],
+      "@graph": type === "product" && products[0] ? [{ ...itemList?.itemListElement[0].item, "@type": "Product" }] : itemList ? [website, itemList] : [website],
     });
     document.head.appendChild(script);
 
