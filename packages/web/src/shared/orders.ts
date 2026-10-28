@@ -15,6 +15,7 @@ export const orderInputSchema = z.object({
 export const integrationSchema = z.object({
   enabled: z.boolean().default(false),
   chatId: z.string().trim().max(30).refine(v => !v || /^-?\d+$/.test(v), "Chat ID должен быть числом").default(""),
+  chatIds: z.array(z.string().trim().regex(/^-?\d+$/, "Chat ID должен быть числом").max(30)).max(30).default([]),
   telegramEnabled: z.boolean().default(true),
   emailEnabled: z.boolean().default(false),
   notifyEmail: z.string().trim().max(254).refine(v => !v || z.email().safeParse(v).success, "Некорректный email").default(""),

@@ -3,7 +3,7 @@ import nodemailer from "nodemailer";
 import { and, eq, or, lt, lte, sql } from "drizzle-orm";
 import { db } from "../database";
 import * as s from "../database/schema";
-import { getIntegration, formatOrderMessage, sendTelegram } from "./orders";
+import { getIntegration, formatOrderMessage, sendTelegramToManagers, telegramRecipients } from "./orders";
 
 export const smtpConfigured = () => !!process.env.SMTP_HOST && !!process.env.SMTP_FROM && !!process.env.SMTP_USER && !!process.env.SMTP_PASSWORD;
 export async function sendEmail(to: string, subject: string, text: string) {
@@ -23,7 +23,7 @@ export async function sendEmail(to: string, subject: string, text: string) {
 const retryDelay = (attempt: number) => [60000, 300000, 900000, 3600000, 21600000][Math.min(attempt - 1, 4)];
 export async function deliverOrder(id: string, channel: "telegram" | "email", manual = false) {
   const config = await getIntegration();
-  if (channel === "telegram" ? !config.telegramEnabled || !config.chatId : !config.emailEnabled || !config.notifyEmail) return;
+  if (channel === "telegram" ? !config.telegramEnabled || !telegramRecipients(config).length : !config.emailEnabled || !config.notifyEmail) return;
   const state = channel === "telegram" ? s.orders.notification : s.orders.emailNotification;
   const atColumn = channel === "telegram" ? s.orders.notificationUpdatedAt : s.orders.emailUpdatedAt;
   const attemptsColumn = channel === "telegram" ? s.orders.telegramAttempts : s.orders.emailAttempts;
@@ -38,7 +38,7 @@ export async function deliverOrder(id: string, channel: "telegram" | "email", ma
   const attempts = channel === "telegram" ? row.telegramAttempts : row.emailAttempts;
   try {
     const text = formatOrderMessage(row.id, row.createdAt, JSON.parse(row.data));
-    if (channel === "telegram") await sendTelegram(config.chatId, text);
+    if (channel === "telegram") await sendTelegramToManagers(telegramRecipients(config), text);
     else await sendEmail(config.notifyEmail, `ASIA BASA: новая заявка ${row.id}`, text);
     await databaseRetry(() => db.update(s.orders).set(channel === "telegram" ? { notification: "sent", notificationError: "", telegramRetryAt: "", notificationUpdatedAt: now }
       : { emailNotification: "sent", emailError: "", emailRetryAt: "", emailUpdatedAt: now }).where(and(eq(s.orders.id, id), eq(attemptsColumn, attempts), eq(atColumn, now))));
@@ -55,7 +55,7 @@ export async function tickNotificationQueue() {
   try {
     const now = new Date().toISOString(), stale = new Date(Date.now() - 120000).toISOString();
     const config = await getIntegration();
-    if (!config.telegramEnabled || !config.chatId) await db.update(s.orders).set({ notification: "disabled" }).where(or(eq(s.orders.notification, "pending"), eq(s.orders.notification, "failed"), and(eq(s.orders.notification, "sending"), lt(s.orders.notificationUpdatedAt, stale))));
+    if (!config.telegramEnabled || !telegramRecipients(config).length) await db.update(s.orders).set({ notification: "disabled" }).where(or(eq(s.orders.notification, "pending"), eq(s.orders.notification, "failed"), and(eq(s.orders.notification, "sending"), lt(s.orders.notificationUpdatedAt, stale))));
     if (!config.emailEnabled || !config.notifyEmail) await db.update(s.orders).set({ emailNotification: "disabled" }).where(or(eq(s.orders.emailNotification, "pending"), eq(s.orders.emailNotification, "failed"), and(eq(s.orders.emailNotification, "sending"), lt(s.orders.emailUpdatedAt, stale))));
     const rows = await db.select({ id: s.orders.id }).from(s.orders).where(or(
       and(lt(s.orders.telegramAttempts, 5), or(eq(s.orders.notification, "pending"), and(eq(s.orders.notification, "failed"), lte(s.orders.telegramRetryAt, now)), and(eq(s.orders.notification, "sending"), lt(s.orders.notificationUpdatedAt, stale)))),

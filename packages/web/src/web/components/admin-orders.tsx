@@ -72,17 +72,21 @@ function PaymentEditor({ order }: { order: Order }) {
 }
 function IntegrationEditor({ initial }: { initial: Integration }) {
   const [form, setForm] = useState(integrationSchema.parse(initial)); const cache = useQueryClient();
+  const [managerIdsText, setManagerIdsText] = useState(() => [...new Set([...(initial.chatIds || []), initial.chatId].filter(Boolean))].join("\n"));
   const save = useMutation(orpc.management.saveIntegration.mutationOptions({ onSuccess: () => cache.invalidateQueries() }));
   const telegram = useMutation(orpc.management.testTelegram.mutationOptions()), email = useMutation(orpc.management.testEmail.mutationOptions());
   return <section className="admin-form space-y-4"><h2 className="serif text-3xl">Telegram / почта и защита заявок</h2>
     <p className="text-sm">Серверные настройки: Telegram {initial.tokenConfigured ? "задан" : "не задан"}; SMTP {initial.smtpConfigured ? "задан" : "не задан"}; CAPTCHA {initial.captchaRequired ? initial.captchaConfigured ? "обязательна и настроена" : "обязательна, ключей нет" : "не обязательна"}. Секреты не передаются в браузер.</p>
     <label className="flex gap-2"><input type="checkbox" checked={form.telegramEnabled} onChange={e => setForm({ ...form, telegramEnabled: e.target.checked })} />Уведомления в Telegram</label>
-    <label className="field-label">Chat ID личного чата<input className="field" maxLength={30} value={form.chatId} onChange={e => setForm({ ...form, chatId: e.target.value })} /></label>
+    <label className="field-label">Telegram Chat ID менеджеров (один ID на строку)
+      <textarea className="field min-h-32" value={managerIdsText} onChange={e => setManagerIdsText(e.target.value)} placeholder={"123456789\n987654321"} />
+    </label>
+    <p className="text-xs text-muted">Каждый менеджер должен сначала открыть бота и нажать Start. Тест отправляет сообщение всем указанным менеджерам.</p>
     <label className="flex gap-2"><input type="checkbox" checked={form.emailEnabled} onChange={e => setForm({ ...form, emailEnabled: e.target.checked })} />Уведомления на почту</label>
     <label className="field-label">Почта администратора для уведомлений<input className="field" type="email" maxLength={254} value={form.notifyEmail} onChange={e => setForm({ ...form, notifyEmail: e.target.value })} /></label>
     <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.documentsReady} onChange={e => setForm({ ...form, documentsReady: e.target.checked })} />Реквизиты, условия продажи и политика обработки данных заполнены; передача данных проверена.</label>
     <label className="flex gap-2 text-sm"><input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} />Включить приём заявок</label>
-    <div className="flex flex-wrap gap-3"><button className="btn" disabled={save.isPending} onClick={() => { const parsed = integrationSchema.safeParse(form); if (parsed.success) save.mutate(parsed.data); else alert(parsed.error.issues[0].message); }}>Сохранить настройки</button><button className="btn" disabled={telegram.isPending || !initial.chatId || !initial.tokenConfigured} onClick={() => telegram.mutate()}>Тест Telegram</button><button className="btn" disabled={email.isPending || !initial.notifyEmail || !initial.smtpConfigured} onClick={() => email.mutate()}>Тест почты</button></div>
+    <div className="flex flex-wrap gap-3"><button className="btn" disabled={save.isPending} onClick={() => { const ids = [...new Set(managerIdsText.split(/[\s,;]+/).filter(Boolean))]; const parsed = integrationSchema.safeParse({ ...form, chatId: "", chatIds: ids }); if (parsed.success) save.mutate(parsed.data); else alert(parsed.error.issues[0].message); }}>Сохранить настройки</button><button className="btn" disabled={telegram.isPending || !(initial.chatId || initial.chatIds?.length) || !initial.tokenConfigured} onClick={() => telegram.mutate()}>Тест Telegram</button><button className="btn" disabled={email.isPending || !initial.notifyEmail || !initial.smtpConfigured} onClick={() => email.mutate()}>Тест почты</button></div>
     {(save.error || telegram.error || email.error) && <p className="error">{err(save.error || telegram.error || email.error)}</p>}{(telegram.isSuccess || email.isSuccess) && <p role="status">Тестовая отправка подтверждена сервером выбранного канала.</p>}
     <p className="text-xs text-muted">Одна активная заявка на телефон или браузер; повторы и лимиты хранятся в БД. Защиту от объёмного DDoS дополнительно включите у хостера/CDN.</p>
   </section>;
