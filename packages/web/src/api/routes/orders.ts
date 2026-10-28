@@ -7,7 +7,7 @@ import { admin } from "../middleware/admin";
 import { db } from "../database";
 import * as s from "../database/schema";
 import { integrationSchema, orderInputSchema, orderStatusSchema } from "../../shared/orders";
-import { checkOrigin, digest, getIntegration, listOrders, makeSnapshot, ordersAvailable, sendTelegram, tokenConfigured } from "../services/orders";
+import { checkOrigin, digest, getIntegration, listOrders, makeSnapshot, ordersAvailable, sendTelegramToManagers, telegramRecipients, tokenConfigured } from "../services/orders";
 import { captchaConfigured, captchaRequired, deviceId, normalizePhone, persistentRate, verifyCaptcha } from "../services/order-security";
 import { deliverOrder, sendEmail, smtpConfigured } from "../services/order-notifications";
 import { editOrder, persistOrder } from "../services/order-persistence";
@@ -34,7 +34,7 @@ export const orderPublic = {
     await verifyCaptcha(input.captchaToken, context.clientIp);
     const data = await makeSnapshot(payload);
     const config = await getIntegration();
-    await persistOrder(requestId, requestHash, device, data, config.telegramEnabled && tokenConfigured() && !!config.chatId, config.emailEnabled && smtpConfigured() && !!config.notifyEmail);
+    await persistOrder(requestId, requestHash, device, data, config.telegramEnabled && tokenConfigured() && telegramRecipients(config).length > 0, config.emailEnabled && smtpConfigured() && !!config.notifyEmail);
     // Delivery is picked up by the durable worker, not awaited in the buyer's HTTP request.
     return { id: requestId, accepted: true };
   }),
@@ -42,7 +42,7 @@ export const orderPublic = {
 export const orderManagement = {
   integration: admin.handler(async () => ({ ...await getIntegration(), tokenConfigured: tokenConfigured(), smtpConfigured: smtpConfigured(), captchaRequired: captchaRequired(), captchaConfigured: captchaConfigured() })),
   saveIntegration: admin.input(integrationSchema).handler(async ({ input }) => {
-    const ready = (input.telegramEnabled && input.chatId && tokenConfigured()) || (input.emailEnabled && input.notifyEmail && smtpConfigured());
+    const ready = (input.telegramEnabled && telegramRecipients(input).length > 0 && tokenConfigured()) || (input.emailEnabled && input.notifyEmail && smtpConfigured());
     if (input.enabled && (!input.documentsReady || !ready || (captchaRequired() && !captchaConfigured())))
       throw new ORPCError("BAD_REQUEST", { message: "Нужны готовые документы, хотя бы один настроенный канал уведомлений и CAPTCHA, если она обязательна" });
     await db.insert(s.orderIntegration).values({ id: "main", data: JSON.stringify(input) })
@@ -51,7 +51,7 @@ export const orderManagement = {
   }),
   testTelegram: admin.handler(async () => {
     const config = await getIntegration();
-    try { await sendTelegram(config.chatId, "ASIA BASA: тест уведомлений."); }
+    try { await sendTelegramToManagers(telegramRecipients(config), "ASIA BASA: тест уведомлений."); }
     catch (error) { throw new ORPCError("BAD_GATEWAY", { message: error instanceof Error ? error.message : "Telegram недоступен" }); }
     return { ok: true };
   }),

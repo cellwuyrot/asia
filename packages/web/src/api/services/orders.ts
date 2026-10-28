@@ -13,10 +13,19 @@ export async function getIntegration() {
   const [row] = await db.select().from(s.orderIntegration).where(eq(s.orderIntegration.id, "main"));
   return integrationSchema.parse(row ? JSON.parse(row.data) : {});
 }
+export function telegramRecipients(config: { chatId: string; chatIds: string[] }): string[] {
+  return [...new Set([...config.chatIds, config.chatId].map(id => id.trim()).filter(Boolean))];
+}
+export async function sendTelegramToManagers(chatIds: string[], message: string) {
+  if (!chatIds.length) throw new Error("Не указаны Chat ID менеджеров");
+  const results = await Promise.allSettled(chatIds.map(id => sendTelegram(id, message)));
+  const failed = results.flatMap((result, index) => result.status === "rejected" ? [chatIds[index]] : []);
+  if (failed.length) throw new Error(`Telegram: не доставлено ${failed.length} из ${chatIds.length} сообщений (Chat ID: ${failed.join(", ")}). Повторная попытка может продублировать уже доставленные уведомления.`);
+}
 export const tokenConfigured = () => Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim());
 export async function ordersAvailable() {
   const config = await getIntegration();
-  const channelsReady = (config.telegramEnabled && !!config.chatId && tokenConfigured()) || (config.emailEnabled && !!config.notifyEmail && smtpConfigured());
+  const channelsReady = (config.telegramEnabled && telegramRecipients(config).length > 0 && tokenConfigured()) || (config.emailEnabled && !!config.notifyEmail && smtpConfigured());
   return config.enabled && config.documentsReady && channelsReady && (!captchaRequired() || captchaConfigured());
 }
 export async function getSettings() {
